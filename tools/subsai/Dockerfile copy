@@ -1,0 +1,24 @@
+#FROM python:3.10.6
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+
+WORKDIR /subsai
+
+COPY requirements.txt .
+
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y git && \
+    apt-get -y install gcc mono-mcs && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY pyproject.toml .
+COPY ./assets ./assets
+COPY ./src ./src
+
+RUN pip install .
+EXPOSE 8501
+CMD ["python", "src/subsai/webui.py"]
+

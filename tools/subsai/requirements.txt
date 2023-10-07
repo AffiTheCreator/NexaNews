@@ -1,0 +1,25 @@
+torch==2.0.1
+openai-whisper==20230124
+streamlit~=1.20.0
+streamlit_player~=0.1.5
+streamlit-aggrid~=0.3.4
+ffsubsync~=0.4.24
+whisper-timestamped @ git+https://github.com/linto-ai/whisper-timestamped@127e8b738756420487210490d09938593244b3dd
+pandas==1.5.3
+pysubs2~=1.6.0
+pywhispercpp==1.1.1
+dl_translate==0.2.6
+faster_whisper==0.8
+whisperx @ git+https://github.com/m-bain/whisperx@0ae0d49d1dd789322181f579c71719f4cac83ae1
+DateTime==5.2
+librosa==0.10.1
+ffmpeg-python==0.2.0
+mosestokenizer==1.2.1
+opus-fast-mosestokenizer==0.0.8.3
+tokenizers==0.13.3
+numpy==1.25.2
+jsonschema==4.19.1
+jsonschema-specifications==2023.7.1
+python-lsp-jsonrpc==1.0.0
+ujson==5.8.0
+debugpy==1.8.0

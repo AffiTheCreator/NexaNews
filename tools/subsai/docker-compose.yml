@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  subsai-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 8501:8501
+      - 5678:5678
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ffmpeg:
+  #   container_name: ffmpeg
+  #   image: jrottenberg/ffmpeg
+  #   #tty: true
+  #   # networks:
+  #   #   - b2c
+  #   ports:
+  #     - "29002:29000"
+  #   tty: true
+  #   entrypoint: "bash"
