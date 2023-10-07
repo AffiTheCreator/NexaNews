@@ -1,0 +1,5 @@
+cluster.name: NexaNews-cluster
+node.name: subsai-node-1
+path.data: /usr/share/elasticsearch/data
+xpack.monitoring.enabled: true
+cluster.initial_master_nodes: ["subsai-node-1"]
