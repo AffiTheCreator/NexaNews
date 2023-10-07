@@ -4,8 +4,9 @@ import numpy as np
 import librosa  
 from functools import lru_cache
 import time
+import debugpy
 
-
+from datetime import datetime
 
 @lru_cache
 def load_audio(fname):
@@ -261,6 +262,7 @@ class OnlineASRProcessor:
         Returns: a tuple (beg_timestamp, end_timestamp, "text"), or (None, None, ""). 
         The non-emty text is confirmed (commited) partial transcript.
         """
+        
         prompt, context = self.prompt()
         transcriptionResult = self.asr.transcribe(self.audio_buffer, init_prompt=prompt)
         transcriptedWords = self.asr.ts_words(transcriptionResult)
@@ -275,17 +277,18 @@ class OnlineASRProcessor:
         if len(self.audio_buffer)/self.SAMPLING_RATE > 30:
 
             self.chunk_completed_segment(transcriptionResult)
-            print(f"chunking because of len",file=sys.stderr)
-            print("CONTEXT:", context, file=sys.stderr)
-            return context
-
-        print(f"len of buffer now: {len(self.audio_buffer)/self.SAMPLING_RATE:2.2f}",file=sys.stderr)
-        return None
+            currentTime = datetime.now()
+            start_time = currentTime - len(self.audio_buffer)/self.SAMPLING_RATE
+            end_time = currentTime
+            return (start_time, end_time, context)
+            # print(f"chunking because of len",file=sys.stderr)
+            # print("CONTEXT:", context, file=sys.stderr)
+            # return context
+        else:
+            # print(f"len of buffer now: {len(self.audio_buffer)/self.SAMPLING_RATE:2.2f}",file=sys.stderr)
+            return None
 
         
-
-
-
     def process_iter(self):
         """Runs on the current audio buffer.
         Returns: a tuple (beg_timestamp, end_timestamp, "text"), or (None, None, ""). 
@@ -339,7 +342,7 @@ class OnlineASRProcessor:
         if len(self.audio_buffer)/self.SAMPLING_RATE > 30:
             # ...on the last completed segment (labeled by Whisper)
             self.chunk_completed_segment(res)
-
+            
             # alternative: on any word
             #l = self.buffer_time_offset + len(self.audio_buffer)/self.SAMPLING_RATE - 10
             # let's find commited word that is less
@@ -488,6 +491,8 @@ def create_tokenizer(lan):
 ## main:
 
 if __name__ == "__main__":
+
+    debugpy.listen(("0.0.0.0", 5679))
 
     import argparse
     parser = argparse.ArgumentParser()

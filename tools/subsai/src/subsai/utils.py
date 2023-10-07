@@ -64,7 +64,7 @@ def generate_subtitle(complete_now_output, channel_name):
     
     # If no valid data, return None
     if start is None or end is None or text.strip() == "":
-        print("Empty Subtitle")
+        # print("Empty Subtitle")
         return None
     
     subtitle_entry = create_subtitle_entry(start, end, text , channel_name)

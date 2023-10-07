@@ -1,5 +1,16 @@
 from elasticsearch import Elasticsearch, helpers
 import json
+import logging
+
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s [%(levelname)s] - %(message)s',
+    handlers=[
+        logging.FileHandler("debug.log"),
+        logging.StreamHandler()
+    ]
+)
+
 
 class SubtitleDatabase:
     def __init__(self, host='elasticsearch', port=9200):

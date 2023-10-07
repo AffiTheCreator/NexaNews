@@ -42,6 +42,8 @@ import signal
 import debugpy
 import multiprocessing
 from elasticsearch import Elasticsearch, helpers
+import logging
+import logging.handlers
 
 
 __author__ = "abdeladim-s"
@@ -54,6 +56,24 @@ __version__ = importlib.metadata.version("subsai")  # type: ignore
 subs_ai = SubsAI()
 tools = Tools()
 es = Elasticsearch([{"host": "elasticsearch", "port": 9200 , "scheme": "http"}])
+
+
+def setup_logger(queue=None):
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    if queue:
+        handler = logging.handlers.QueueHandler(queue)
+    else:
+        handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger
+
+def worker_process(queue, data_queue, channel_name, handler_func):
+    logger = setup_logger(queue)
+    logger.info(f"Process {multiprocessing.current_process().name} - Handling: {channel_name}")
+    handler_func(data_queue, channel_name, logger)
 
 
 def ensure_index_exists(index_name):
@@ -301,7 +321,8 @@ footer = """
 """
 
 
-def handle_ffmpeg_stream(data_queue, channel_name):
+def handle_ffmpeg_stream(data_queue, channel_name, logger):
+    logger.info('Handling ASR engine for channel: %s', channel_name)
     # Define FFmpeg command. Replace [...] with your actual FFmpeg command
     m3u8_stream_path = subs_ai.get_channel_info(channel_name)["url"]
     print("Channel URL : " + m3u8_stream_path)
@@ -349,7 +370,8 @@ def handle_ffmpeg_stream(data_queue, channel_name):
         process.terminate()  # Ensure FFmpeg is terminated cleanly
 
 
-def handle_asr_engine(data_queue):
+def handle_asr_engine(data_queue , channel_name, logger):
+    logger.info('Handling ASR engine for channel: %s', channel_name)
     src_lan = "en"  # source language
     # Initialize ASR engine. Replace [...] with your actual initialization code.
     asr_engine = FasterWhisperASR(lan=src_lan, modelsize='tiny.en')
@@ -367,38 +389,59 @@ def handle_asr_engine(data_queue):
 
             # Insert audio chunk to Whisper
             online.insert_audio_chunk(audio_chunk)
-
             # Process and retrieve transcription
             try:
-                print("Inside Try")
                 transcription_full_output = online.transcriptioChuncker()
-                subtitle_completed = generate_subtitle(transcription_full_output)
-                print("Subtitle: " + subtitle_completed[2])
-                if subtitle_completed:
+                # transcription_full_output = online.process_iter()
+                if transcription_full_output:
+                    subtitle_completed = generate_subtitle(transcription_full_output , channel_name)
                     print("Subtitle: " + subtitle_completed)
-                    st.session_state['transcribed_subs'] = subtitle_completed
+                    insert_subtitle_to_es(subtitle_completed , "subtitles")
+                    st.session_state['asr_process'] = subtitle_completed
+                else:
+                    print("waiting for transcription end")
             except Exception as e:
                 print(f"Error during processing: {str(e)}")
-
             # Update UI with transcription. Note: you'll need to determine a safe way to do this in your Streamlit app.
     except Exception as e:
         print(f"Error in ASR engine: {str(e)}")
 
+def listener_process(queue):
+    logger = setup_logger()
+    listener = logging.handlers.QueueListener(queue, logger)
+    listener.start()
+    while True:
+        # Check for the sentinel value
+        try:
+            msg = queue.get()
+            if msg is None:
+                logger.info("Listener process received sentinel, shutting down...")
+                break
+        except Exception as e:
+            logger.error(f"Error in listener process: {str(e)}")
+        
+    listener.stop()
+
+
 def start_processes(channel_name):
     data_queue = multiprocessing.Queue()
+    log_queue = multiprocessing.Queue()
     
-    ffmpeg_process = multiprocessing.Process(target=handle_ffmpeg_stream, args=(data_queue, channel_name))
-    asr_process = multiprocessing.Process(target=handle_asr_engine, args=(data_queue,))
+    listener = multiprocessing.Process(target=listener_process, args=(log_queue,))
+    ffmpeg_process = multiprocessing.Process(target=worker_process, args=(log_queue, data_queue, channel_name, handle_ffmpeg_stream))
+    asr_process = multiprocessing.Process(target=worker_process, args=(log_queue, data_queue, channel_name, handle_asr_engine))
     
+    listener.start()
     ffmpeg_process.start()
     asr_process.start()
 
-    return ffmpeg_process, asr_process, data_queue
+    return ffmpeg_process, asr_process, data_queue, listener, log_queue
 
-def stop_processes(ffmpeg_process, asr_process , data_queue):
+
+def stop_processes(ffmpeg_process, asr_process , data_queue, log_queue):
     # Send a special signal to stop the ASR engine (if desired, like a None)
-    data_queue.app(None)
-
+    data_queue.put(None)
+    log_queue.put(None)
     # Terminate the processes safely
 
     ffmpeg_process.kill()
@@ -408,35 +451,13 @@ def stop_processes(ffmpeg_process, asr_process , data_queue):
     ffmpeg_process.join()
     asr_process.join()
 
-# def modelSettingsUI():
-
-#     stt_model_name = st.selectbox(
-#         "Select Model",
-#         SubsAI.available_models(),
-#         index=0,
-#         help="Select an AI model to use for transcription",
-#     )
-
-#     # Check if a model is selected
-#     if stt_model_name:  # Replace with your actual condition for a model being selected
-#         info = SubsAI.model_info(stt_model_name)
-
-#         # Create and display the expander and info within it
-#         with st.expander("Model Description", expanded=True):
-#             st.info(info["description"] + "\n" + info["url"])
-
-#         # Sidebar configurations
-#         with st.sidebar.expander("Model Configs", expanded=False):
-#             config_schema = SubsAI.config_schema(stt_model_name)
-#             _generate_config_ui(stt_model_name, config_schema)
-
 #     return stt_model_name
 def webui() -> None:
     """
     main web UI
     :return: None
     """
-    st.set_page_config(page_title='Subs AI',
+    st.set_page_config(page_title='NexaNews',
                        page_icon="🎞️",
                        menu_items={
                            'Get Help': 'https://github.com/abdeladim-s/subsai',
@@ -447,19 +468,8 @@ def webui() -> None:
                        layout="wide",
                        initial_sidebar_state='auto')
 
-    # st.markdown(f"# Subs AI 🎞️")
-    # st.markdown(
-    #     "### Subtitles generation tool powered by OpenAI's [Whisper](https://github.com/openai/whisper) and its "
-    #     "variants.")
     st.sidebar.title("Settings")
-    # st.info(
-    #     "This is an open source project and you are very welcome to **contribute** your awesome "
-    #     "comments, questions, ideas through "
-    #     "[discussions](https://github.com/abdeladim-s/subsai/discussions), "
-    #     "[issues](https://github.com/abdeladim-s/subsai/issues) and "
-    #     "[pull requests](https://github.com/abdeladim-s/subsai/pulls) "
-    #     "to the [project repository](https://github.com/abdeladim-s/subsai/). "
-    # )
+
 
     if 'transcribed_subs' in st.session_state:
         subs = st.session_state['transcribed_subs']
@@ -554,6 +564,8 @@ def webui() -> None:
             st.session_state.ffmpeg_process,
             st.session_state.asr_process,
             st.session_state.data_queue,
+            st.session_state.listener,
+            st.session_state.log_queue,
         ) = start_processes(channel_name)
         st.write("Processes started!")
     # Stop processes
@@ -563,7 +575,7 @@ def webui() -> None:
         and st.session_state.asr_process is not None
     ):
         stop_processes(
-            st.session_state.ffmpeg_process, st.session_state.asr_process, st.session_state.data_queue
+            st.session_state.ffmpeg_process, st.session_state.asr_process, st.session_state.data_queue, st.session_state.log_queue
         )
         st.session_state.ffmpeg_process, st.session_state.asr_process = None, None
         st.write("Processes stopped!")
@@ -783,9 +795,13 @@ def webui() -> None:
 
 
 def run():
+    logger = logging.getLogger(__name__)  # Configure logging regardless of the condition
+    
     if runtime.exists():
+        logger.info("Runtime exists, starting web UI.")  # Example logging call
         webui()
     else:
+        logger.warning("Runtime does not exist, starting debug mode.")  # Example logging call
         debugpy.listen(("0.0.0.0", 5678))
         sys.argv = ["streamlit", "run", __file__, "--theme.base", "dark"] + sys.argv
         sys.exit(stcli.main())
