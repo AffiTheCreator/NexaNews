@@ -11,7 +11,7 @@ services:
     networks:
       - nexanews-net
     depends_on:
-      kibana: { condition: service_healthy }
+      elasticsearch: { condition: service_healthy }
     deploy:
       resources:
         reservations:
