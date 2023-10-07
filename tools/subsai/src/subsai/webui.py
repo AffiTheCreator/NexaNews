@@ -43,6 +43,7 @@ import debugpy
 import multiprocessing
 from elasticsearch import Elasticsearch, helpers
 
+
 __author__ = "abdeladim-s"
 __contact__ = "https://github.com/abdeladim-s"
 __copyright__ = "Copyright 2023,"
@@ -403,12 +404,36 @@ def stop_processes(ffmpeg_process, asr_process, data_queue):
     data_queue.put(None)
 
     # Terminate the processes safely
-    ffmpeg_process.terminate()
-    asr_process.terminate()
+    ffmpeg_process.kill()
+    asr_process.kill()
 
     # Optionally wait for the processes to finish
     ffmpeg_process.join()
     asr_process.join()
+
+# def modelSettingsUI():
+
+#     stt_model_name = st.selectbox(
+#         "Select Model",
+#         SubsAI.available_models(),
+#         index=0,
+#         help="Select an AI model to use for transcription",
+#     )
+
+#     # Check if a model is selected
+#     if stt_model_name:  # Replace with your actual condition for a model being selected
+#         info = SubsAI.model_info(stt_model_name)
+
+#         # Create and display the expander and info within it
+#         with st.expander("Model Description", expanded=True):
+#             st.info(info["description"] + "\n" + info["url"])
+
+#         # Sidebar configurations
+#         with st.sidebar.expander("Model Configs", expanded=False):
+#             config_schema = SubsAI.config_schema(stt_model_name)
+#             _generate_config_ui(stt_model_name, config_schema)
+
+#     return stt_model_name
 
 
 def webui() -> None:
@@ -453,18 +478,21 @@ def webui() -> None:
     with st.sidebar:
         channel_name = ""
         file_path = ""
-        with st.expander("Media file", expanded=True):
+        transcribe_button = False
+        with st.expander("Media Source", expanded=True):
             file_mode = st.selectbox(
                 "Select file mode",
                 ["Local path", "Upload", "IPTV"],
-                index=0,
+                index=2,
                 help="Use `Local Path` if you are on a local machine, or use `Upload` to "
-                "upload your files if you are using a remote server",
+                "upload your files if you are using a remote server or IPTV to perform live ASR",
             )
             if file_mode == "Local path":
                 file_path = st.text_input(
                     "Media file path", help="Absolute path of the media file"
                 )
+                transcribe_button = st.button("Transcribe", type="primary")
+
             elif file_mode == "Upload":
                 uploaded_file = st.file_uploader("Choose a media file")
                 if uploaded_file is not None:
@@ -474,34 +502,37 @@ def webui() -> None:
                     file = open(file_path, "wb")
                     file.write(uploaded_file.getbuffer())
                 else:
-                    file_path = ""
+                    file_path = ""        
+
+                transcribe_button = st.button("Transcribe", type="primary")
+                        
             elif file_mode == "IPTV":
-                file_path = ""
                 # channel_list_json = SubsAI.available_channels()
                 # stream_url = st.text_input('Stream URL', help='The URL Address for the Live Stream'  )
                 channel_name = st.selectbox(
                     "Select Channel",
                     SubsAI.available_channels(),
-                    index=0,
+                    index=1,
                     help="Select a channel to use ",
                 )
+        
+        if file_mode == "Upload" or file_mode == "Local path":
+            stt_model_name = st.selectbox(
+                "Select Model",
+                SubsAI.available_models(),
+                index=0,
+                help="Select an AI model to use for transcription",
+            )
 
-        stt_model_name = st.selectbox(
-            "Select Model",
-            SubsAI.available_models(),
-            index=0,
-            help="Select an AI model to use for transcription",
-        )
+            with st.expander("Model Description", expanded=True):
+                info = SubsAI.model_info(stt_model_name)
+                st.info(info["description"] + "\n" + info["url"])
 
-        with st.expander("Model Description", expanded=True):
-            info = SubsAI.model_info(stt_model_name)
-            st.info(info["description"] + "\n" + info["url"])
+            with st.sidebar.expander("Model Configs", expanded=False):
+                config_schema = SubsAI.config_schema(stt_model_name)
+                _generate_config_ui(stt_model_name, config_schema)
+            
 
-        with st.sidebar.expander("Model Configs", expanded=False):
-            config_schema = SubsAI.config_schema(stt_model_name)
-            _generate_config_ui(stt_model_name, config_schema)
-
-        transcribe_button = st.button("Transcribe", type="primary")
         transcribe_loading_placeholder = st.empty()
         start_button = st.button("Start Job", type="primary")
         stop_button = st.button("Stop Job", type="primary")
@@ -521,20 +552,19 @@ def webui() -> None:
     if "asr_process" not in st.session_state:
         st.session_state["asr_process"] = None
 
-    data_queue = ""
     # Start processes
     if (
         start_button
         and st.session_state.ffmpeg_process is None
         and st.session_state.asr_process is None
-    ):
+        ):
         # When you want to start the processes:
         # ffmpeg_process, asr_process, data_queue = start_processes(channel_name)
         # And when you want to stop them:
         (
             st.session_state.ffmpeg_process,
             st.session_state.asr_process,
-            data_queue,
+            st.session_state.data_queue,
         ) = start_processes(channel_name)
         st.write("Processes started!")
     # Stop processes
@@ -544,117 +574,10 @@ def webui() -> None:
         and st.session_state.asr_process is not None
     ):
         stop_processes(
-            st.session_state.ffmpeg_process, st.session_state.asr_process, data_queue
+            st.session_state.ffmpeg_process, st.session_state.asr_process, st.session_state.data_queue
         )
         st.session_state.ffmpeg_process, st.session_state.asr_process = None, None
         st.write("Processes stopped!")
-
-    # if start_job_button:
-    #     # config_schema = SubsAI.config_schema(stt_model_name)
-    #     # model_config = _get_config_from_session_state(stt_model_name, config_schema, notification_placeholder)
-    #     # tgt_lan = "en"  # target language  -- same as source for ASR, "en" if translate task is used
-
-    #     # Initialize ASR
-    #     asr = FasterWhisperASR(lan=src_lan, modelsize='tiny.en')
-    #     tokenizer = create_tokenizer(src_lan)
-    #     online = OnlineASRProcessor(asr, tokenizer)
-
-    #     # set options:
-    #     # asr.set_translate_task()  # it will translate from lan into English
-    #     # asr.use_vad()  # set using VAD
-
-    #     m3u8_stream_path = subs_ai.get_channel_info(channel_name)['url']
-    #     print("Channel URL : " + m3u8_stream_path)
-
-    #     # Initialize ffmpeg process
-    #     # Define FFmpeg input and output options
-    #     cmd = [
-    #         'ffmpeg',
-    #         "-loglevel", "quiet",
-    #         '-i', m3u8_stream_path,  # Input stream URL
-    #         '-f', 'wav',       # Format
-    #         '-acodec', 'pcm_s16le',  # Audio codec
-    #         '-ar', '16000',    # Sample rate
-    #         '-ac', '1',        # Audio channels
-    #         '-',               # Output to stdout
-    #     ]
-    #     print(cmd)
-    #     # Start FFmpeg process
-    #     # Processing loop
-    #     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**8)
-    #     try:
-    #         print("Entering the loop")
-    #         PID = process.pid
-    #         while not stop_job_button:  # Your while loop
-    #             print("Top of the loop")                # Read a chunk of data
-    #             # Inside your loop
-    #             if stop_job_button:
-    #                 start_job_button = False
-    #                 print("Stop button pressed")
-    #                 process.send_signal(signal.SIGINT)
-    #                 print("Signal sent to process")
-    #                 process.wait()
-    #                 process.kill()
-    #                 process.terminate()
-    #                 print("Process waited")
-    #                 break  # Exit the loop
-
-    #             raw_audio = process.stdout.read(16000*2)  # 1 second of audio data
-
-    #             if not raw_audio:
-    #                 print("not raw audio")
-    #                 pass
-
-    #             # Convert raw audio to numpy array
-    #             audio_chunk = np.frombuffer(raw_audio, dtype=np.int16).astype(np.float32)
-
-    #             # Normalize audio data
-    #             audio_chunk /= np.iinfo(np.int16).max
-    #             print("audio_chunk")
-    #             print(audio_chunk)
-    #             # Insert audio chunk to Whisper
-    #             online.insert_audio_chunk(audio_chunk)
-
-    #             # Process and retrieve transcription
-    #             try:
-    #                 print("Inside Try")
-    #                 partial_output_SUBS = online.process_iter()
-    #                 subtitle = generate_subtitle(partial_output_SUBS)
-    #                 print("Subtitle: " + subtitle)
-    #                 if subtitle:
-    #                     print("Subtitle: " + subtitle.text)
-    #                     st.session_state['transcribed_subs'] = subtitle
-
-    #             except Exception as e:
-    #                 a += 1
-    #                 print(f"Error during processing: {str(e)}")
-    #                 print(a)
-    #                 continue
-
-    #             print("End of while !")
-    #             # print(subs)  # do something with the last output
-    #             pass
-    #             print("End of the loop iteration")
-    #         # at the end of this audio processing
-    #         final_subs = online.finish()
-    #         print("Final Subs: ")
-    #         # print(final_subs)
-    #         st.session_state['transcribed_subs'] = subtitle
-    #         # online.init()  # refresh if you're going to re-use the object for the next audio
-    #         transcribe_loading_placeholder.success('Done!', icon="✅")
-    #         process.kill()
-    #         process.terminate()
-
-    #     except KeyboardInterrupt:  # Handle manual interruption (Ctrl+C)
-    #         process.send_signal(signal.SIGINT)  # Send an interrupt signal to FFmpeg
-    #         process.wait()  # Wait for FFmpeg to gracefully terminate
-    #     except Exception as e:  # Handle other exceptions
-    #         print(f"Error: {str(e)}")
-    #         process.kill()  # Force FFmpeg to quit
-    #     finally:  # Ensure FFmpeg is terminated cleanly
-    #         print("Cleaning up")
-    #         process.terminate()
-    #         process.kill()  # Force FFmpeg to quit
 
     with st.expander("Post Processing Tools", expanded=False):
         basic_tool = st.selectbox(
@@ -884,9 +807,12 @@ def webui() -> None:
             },
         }
 
-        event = st_player(
-            _media_file_base64(file_path), **options, height=500, key="player"
-        )
+        if "asr_process" in st.session_state or "ffmpeg_process" in st.session_state:
+            # event = st_player(subs_ai.get_channel_info(channel_name)["url"], **options, height=500, key="player-live")
+            st_player(subs_ai.get_channel_info(channel_name)["url"], height=400, controls=True)
+        else:
+            event = st_player(_media_file_base64(file_path), **options, height=500, key="player-offline")
+
 
     with st.expander("Export subtitles file"):
         media_file = Path(file_path)
