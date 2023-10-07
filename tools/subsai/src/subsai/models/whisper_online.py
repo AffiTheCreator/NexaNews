@@ -255,6 +255,36 @@ class OnlineASRProcessor:
             prompt.append(x)
         non_prompt = self.commited[k:]
         return self.asr.sep.join(prompt[::-1]), self.asr.sep.join(t for _,_,t in non_prompt)
+    
+    def transcriptioChuncker(self):
+        """Runs on the current audio buffer.
+        Returns: a tuple (beg_timestamp, end_timestamp, "text"), or (None, None, ""). 
+        The non-emty text is confirmed (commited) partial transcript.
+        """
+        prompt, context = self.prompt()
+        transcriptionResult = self.asr.transcribe(self.audio_buffer, init_prompt=prompt)
+        transcriptedWords = self.asr.ts_words(transcriptionResult)
+
+        self.transcript_buffer.insert(transcriptedWords, self.buffer_time_offset)
+        transcriptBufferFlush = self.transcript_buffer.flush()
+        self.commited.extend(transcriptBufferFlush)
+
+        if transcriptBufferFlush:
+            print("chunk_completed_sentence")
+
+        if len(self.audio_buffer)/self.SAMPLING_RATE > 30:
+
+            self.chunk_completed_segment(transcriptionResult)
+            print(f"chunking because of len",file=sys.stderr)
+            print("CONTEXT:", context, file=sys.stderr)
+            return context
+
+        print(f"len of buffer now: {len(self.audio_buffer)/self.SAMPLING_RATE:2.2f}",file=sys.stderr)
+        return None
+
+        
+
+
 
     def process_iter(self):
         """Runs on the current audio buffer.
