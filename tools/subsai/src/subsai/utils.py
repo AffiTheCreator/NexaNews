@@ -28,7 +28,7 @@ def _load_config(config_name, model_config, config_schema):
         return model_config[config_name]
     return config_schema[config_name]["default"]
 
-def create_subtitle_entry(start, end, text):
+def create_subtitle_entry(start, end, text , channel_name):
     """
     Converts timestamps and text into a subtitle entry.
 
@@ -46,10 +46,11 @@ def create_subtitle_entry(start, end, text):
     return {
         "start_time": start_time,
         "end_time": end_time,
-        "text": text
+        "text": text,
+        "channel": channel_name
     }
 
-def generate_subtitle(complete_now_output):
+def generate_subtitle(complete_now_output, channel_name):
     """
     Generates a subtitle entry from the "COMPLETE NOW" output.
 
@@ -66,7 +67,7 @@ def generate_subtitle(complete_now_output):
         print("Empty Subtitle")
         return None
     
-    subtitle_entry = create_subtitle_entry(start, end, text)
+    subtitle_entry = create_subtitle_entry(start, end, text , channel_name)
     return json.dumps(subtitle_entry)
 
 def get_available_devices() -> list:
