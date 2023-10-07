@@ -303,8 +303,6 @@ def handle_asr_engine(data_queue):
             if audio_chunk is None:
                 break
 
-            print("audio_chunk")
-            print(audio_chunk)
             # Insert audio chunk to Whisper
             online.insert_audio_chunk(audio_chunk)
 
@@ -313,7 +311,7 @@ def handle_asr_engine(data_queue):
                 print("Inside Try")
                 transcription_full_output = online.process_iter()
                 subtitle_completed = generate_subtitle(transcription_full_output)
-                print("Subtitle: " + subtitle_completed)
+                print("Subtitle: " + subtitle_completed[2])
                 if subtitle_completed:
                     print("Subtitle: " + subtitle_completed)
                     st.session_state['transcribed_subs'] = subtitle_completed
@@ -439,7 +437,7 @@ def webui() -> None:
     if 'asr_process' not in st.session_state:
         st.session_state['asr_process'] = None
 
-
+    data_queue = ''
     # Start processes
     if start_button and st.session_state.ffmpeg_process is None and st.session_state.asr_process is None:
         # When you want to start the processes:

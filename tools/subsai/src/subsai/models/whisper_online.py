@@ -280,8 +280,8 @@ class OnlineASRProcessor:
         # there is a newly confirmed text
         if o:
             # we trim all the completed sentences from the audio buffer
-            self.chunk_completed_sentence()
-
+            # self.chunk_completed_sentence()
+            print("chunk_completed_sentence")
             # ...segments could be considered
             #self.chunk_completed_segment(res)
 
@@ -454,9 +454,6 @@ def create_tokenizer(lan):
         def split(self, sent):
             return wtp.split(sent, lang_code=lan)
     return WtPtok()
-
-
-
 
 ## main:
 

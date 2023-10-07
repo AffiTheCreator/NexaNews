@@ -23,3 +23,4 @@ jsonschema-specifications==2023.7.1
 python-lsp-jsonrpc==1.0.0
 ujson==5.8.0
 debugpy==1.8.0
+wtpsplit==1.2.3
