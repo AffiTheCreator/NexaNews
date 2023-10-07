@@ -6,7 +6,8 @@ from functools import lru_cache
 import time
 import debugpy
 
-from datetime import datetime
+from datetime import datetime, timedelta
+
 
 @lru_cache
 def load_audio(fname):
@@ -278,7 +279,8 @@ class OnlineASRProcessor:
 
             self.chunk_completed_segment(transcriptionResult)
             currentTime = datetime.now()
-            start_time = currentTime - len(self.audio_buffer)/self.SAMPLING_RATE
+            time_difference = timedelta(seconds=len(self.audio_buffer)/self.SAMPLING_RATE)
+            start_time = currentTime - time_difference
             end_time = currentTime
             return (start_time, end_time, context)
             # print(f"chunking because of len",file=sys.stderr)
