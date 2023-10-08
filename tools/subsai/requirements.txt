@@ -25,3 +25,4 @@ ujson==5.8.0
 debugpy==1.8.0
 wtpsplit==1.2.3
 elasticsearch==8.10.0
+open-interpreter==0.1.7

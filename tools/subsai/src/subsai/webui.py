@@ -45,6 +45,8 @@ import multiprocessing
 from elasticsearch import Elasticsearch, helpers
 import logging
 import logging.handlers
+import interpreter
+
 
 
 __author__ = "abdeladim-s"
@@ -407,7 +409,8 @@ def handle_asr_engine(data_queue, channel_name , logger_asr):
                     logger_asr.info("Subtitle: " + subtitle_completed)
                     insert_subtitle_to_es(subtitle_completed, "subtitles")
                     st.session_state["asr_process"] = subtitle_completed  
-                    saveSubsToFile(transcription_full_output)                
+                    saveSubsToFile(transcription_full_output)
+                    # add interpreter code
                 # transcription_full_output = online.process_iter()
             except Exception as e:
                 logger_asr.error(f"Error during processing: {str(e)}", exc_info=True)
