@@ -63,7 +63,6 @@ services:
       - nexanews-net
     depends_on:
       elasticsearch: { condition: service_healthy }
-      nexanews: {condition: service_healthy}
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-s", "-f", "http://localhost:5601/"]

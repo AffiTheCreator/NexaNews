@@ -44,6 +44,8 @@ import multiprocessing
 from elasticsearch import Elasticsearch, helpers
 import logging
 import logging.handlers
+import interpreter
+
 
 
 __author__ = "abdeladim-s"
@@ -406,6 +408,7 @@ def handle_asr_engine(data_queue, channel_name , logger_asr):
                     logger_asr.info("Subtitle: " + subtitle_completed)
                     insert_subtitle_to_es(subtitle_completed, "subtitles")
                     st.session_state["asr_process"] = subtitle_completed
+                    interpreter.Interpreter.chat("Given the following close caption removed from " + channel_name + " live stream , what are key aspects worth saving like keywords, subject , context\n " + subtitle_completed) # Executes a single command
                 # transcription_full_output = online.process_iter()
             except Exception as e:
                 logger_asr.error(f"Error during processing: {str(e)}", exc_info=True)
