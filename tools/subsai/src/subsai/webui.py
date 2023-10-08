@@ -13,6 +13,7 @@ import sys
 import tempfile
 from base64 import b64encode
 from pathlib import Path
+import time
 
 import pandas as pd
 import streamlit as st
@@ -405,13 +406,36 @@ def handle_asr_engine(data_queue, channel_name , logger_asr):
                     )
                     logger_asr.info("Subtitle: " + subtitle_completed)
                     insert_subtitle_to_es(subtitle_completed, "subtitles")
-                    st.session_state["asr_process"] = subtitle_completed
+                    st.session_state["asr_process"] = subtitle_completed  
+                    saveSubsToFile(transcription_full_output)                
                 # transcription_full_output = online.process_iter()
             except Exception as e:
                 logger_asr.error(f"Error during processing: {str(e)}", exc_info=True)
             # Update UI with transcription. Note: you'll need to determine a safe way to do this in your Streamlit app.
     except Exception as e:
         logger_asr.error(f"Error in ASR engine: {str(e)}", exc_info=True)
+
+
+
+def saveSubsToFile(data):
+    subtitleTupleIndex = 2
+    current_time = time.time()
+    
+    # Arquivo é criado a cada 10 minutos
+    interval_seconds = 600
+    
+    # Calcula o número do arquivo com base no horário atual e no intervalo
+    file_number = int(current_time / interval_seconds)
+    
+    # Define o nome do arquivo com base no número do arquivo
+    file_path = f"/home/nexanews/mysubs_{file_number}.txt"
+    
+    print(f"Saving to file: {file_path}")
+    
+    # Abre o arquivo em modo de anexação (append) e escreve os dados
+    with open(file_path, 'a') as file:
+        file.write(str(data[subtitleTupleIndex]))
+
 
 def listener_process(log_queue):
     try:
