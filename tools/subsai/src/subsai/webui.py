@@ -60,38 +60,28 @@ es = Elasticsearch([{"host": "elasticsearch", "port": 9200, "scheme": "http"}])
 
 class ContextAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
-        return "[%s] %s" % (self.extra["context"], msg), kwargs
+        return '[%s] %s' % (self.extra['context'], msg), kwargs
 
 
-def setup_logger(queue=None):
+def worker_setup(log_queue, context):
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    if queue:
-        handler = logging.handlers.QueueHandler(queue)
-    else:
-        handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    logger.addHandler(logging.handlers.QueueHandler(log_queue))
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    return ContextAdapter(logger, {'context': context})
+
+
+def setup_logger():
+    logger = logging.getLogger(__name__)
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False  # Prevent log messages from being passed to the root logger
     return logger
 
-
 logger = setup_logger()
-
-
-def worker_process(queue, data_queue, channel_name, handler_func):
-    base_logger = setup_logger(queue)
-    # Create a LoggerAdapter to add the process name or channel name to log messages
-    logger = ContextAdapter(
-        base_logger, {"context": multiprocessing.current_process().name}
-    )
-    logger.info(
-        f"Process {multiprocessing.current_process().name} - Handling: {channel_name}"
-    )
-    handler_func(data_queue, channel_name, logger)
-
 
 def ensure_index_exists(index_name):
     if not es.indices.exists(index=index_name):
@@ -99,12 +89,13 @@ def ensure_index_exists(index_name):
 
 
 def insert_subtitle_to_es(subtitle, index_name):
+    
     try:
         es.index(index=index_name, document=subtitle)
     except Exception as e:
-        logger.info(e)
+        logger.error(e, exc_info=True)
     finally:
-        logger.info()
+        logger.info("Subtitle Inserted !")
 
 
 def _get_key(model_name: str, config_name: str) -> str:
@@ -128,6 +119,7 @@ def _config_ui(config_name: str, key: str, config: dict):
 
     :return: config UI streamlit objects
     """
+    
     if config["type"] == str:
         return st.text_input(
             config_name, help=config["description"], key=key, value=config["default"]
@@ -242,6 +234,7 @@ def _media_file_base64(file_path, mime="video/mp4", start_time=0):
 
     :return: base64 of the media file
     """
+    
     if file_path == "":
         data = ""
         return [{"type": mime, "src": f"data:{mime};base64,{data}#t={start_time}"}]
@@ -266,7 +259,6 @@ def _create_translation_model(model_name: str):
     """
     translation_model = tools.create_translation_model(model_name)
     return translation_model
-
 
 @st.cache_data
 def _transcribe(file_path, model_name, model_config):
@@ -337,11 +329,11 @@ footer = """
 """
 
 
-def handle_ffmpeg_stream(data_queue, channel_name, logger):
-    logger.info("Handling ASR engine for channel: %s", channel_name)
+def handle_ffmpeg_stream(data_queue, channel_name, logger_ffmpeg):
+    logger = logging.getLogger(__name__)
     # Define FFmpeg command. Replace [...] with your actual FFmpeg command
     m3u8_stream_path = subs_ai.get_channel_info(channel_name)["url"]
-    logger.info("Channel URL : " + m3u8_stream_path)
+    # logger.info("Channel URL : " + m3u8_stream_path)
 
     cmd = [
         "ffmpeg",
@@ -381,13 +373,12 @@ def handle_ffmpeg_stream(data_queue, channel_name, logger):
             # Place audio_chunk on the queue for the ASR process
             data_queue.put(audio_chunk)
     except Exception as e:
-        logger.info(f"Error in FFmpeg stream: {str(e)}")
+        logger_ffmpeg.error(f"Error in FFmpeg stream: {str(e)}", exc_info=True)
     finally:
         process.terminate()  # Ensure FFmpeg is terminated cleanly
 
 
-def handle_asr_engine(data_queue, channel_name, logger):
-    logger.info("Handling ASR engine for channel: %s", channel_name)
+def handle_asr_engine(data_queue, channel_name , logger_asr):
     src_lan = "en"  # source language
     # Initialize ASR engine. Replace [...] with your actual initialization code.
     asr_engine = FasterWhisperASR(lan=src_lan, modelsize="tiny.en")
@@ -408,74 +399,67 @@ def handle_asr_engine(data_queue, channel_name, logger):
             # Process and retrieve transcription
             try:
                 transcription_full_output = online.transcriptioChuncker()
-                # transcription_full_output = online.process_iter()
                 if transcription_full_output:
                     subtitle_completed = generate_subtitle(
                         transcription_full_output, channel_name
                     )
-                    logger.info("Subtitle: " + subtitle_completed)
+                    logger_asr.info("Subtitle: " + subtitle_completed)
                     insert_subtitle_to_es(subtitle_completed, "subtitles")
                     st.session_state["asr_process"] = subtitle_completed
-                else:
-                    logger.info("waiting for transcription end")
+                # transcription_full_output = online.process_iter()
             except Exception as e:
-                logger.info(f"Error during processing: {str(e)}")
+                logger_asr.error(f"Error during processing: {str(e)}", exc_info=True)
             # Update UI with transcription. Note: you'll need to determine a safe way to do this in your Streamlit app.
     except Exception as e:
-        logger.info(f"Error in ASR engine: {str(e)}")
+        logger_asr.error(f"Error in ASR engine: {str(e)}", exc_info=True)
 
-
-def listener_process(queue):
-    logger = setup_logger()
-    listener = logging.handlers.QueueListener(queue, logger)
-    listener.start()
-    while True:
-        # Check for the sentinel value
-        try:
-            msg = queue.get()
-            if msg is None:
-                logger.info("Listener process received sentinel, shutting down...")
+def listener_process(log_queue):
+    try:
+        logger = setup_logger()
+        logger.info("[Listener Process] Started.")
+        while True:
+            print("[Listener Process] Waiting for log record...")
+            record = log_queue.get()
+            print("[Listener Process] Log record received.")
+            if record is None:
+                logger.info("[Listener Process] Termination signal received.")
                 break
-        except Exception as e:
-            logger.error(f"Error in listener process: {str(e)}")
-
-    listener.stop()
-
+            logger.handle(record)
+        logger.info("[Listener Process] Terminating.")
+    except Exception as e:
+        print(f"[Listener Process] Error: {str(e)}")
+    finally:
+        print("[Listener Process] Ended.")
 
 def start_processes(channel_name):
     data_queue = multiprocessing.Queue()
     log_queue = multiprocessing.Queue()
 
+    print("[Main] Starting listener...")
     listener = multiprocessing.Process(target=listener_process, args=(log_queue,))
-    ffmpeg_process = multiprocessing.Process(
-        target=worker_process,
-        args=(log_queue, data_queue, channel_name, handle_ffmpeg_stream),
-    )
-    asr_process = multiprocessing.Process(
-        target=worker_process,
-        args=(log_queue, data_queue, channel_name, handle_asr_engine),
-    )
-
     listener.start()
+
+    print("[Main] Starting ffmpeg_process...")
+    ffmpeg_process = multiprocessing.Process(target=handle_ffmpeg_stream, args=(data_queue, channel_name, worker_setup(log_queue, 'ffmpeg_process')))
     ffmpeg_process.start()
+
+    print("[Main] Starting asr_process...")
+    asr_process = multiprocessing.Process(
+        target=handle_asr_engine, args=(data_queue, channel_name, worker_setup(log_queue, 'asr_process'))
+    )
     asr_process.start()
 
     return ffmpeg_process, asr_process, data_queue, listener, log_queue
 
 
+
 def stop_processes(ffmpeg_process, asr_process, data_queue, log_queue):
-    # Send a special signal to stop the ASR engine (if desired, like a None)
     data_queue.put(None)
     log_queue.put(None)
-    # Terminate the processes safely
-
-    ffmpeg_process.kill()
-    asr_process.kill()
-
-    # Optionally wait for the processes to finish
+    ffmpeg_process.terminate()
+    asr_process.terminate()
     ffmpeg_process.join()
     asr_process.join()
-
 
 #     return stt_model_name
 def webui() -> None:
@@ -483,6 +467,7 @@ def webui() -> None:
     main web UI
     :return: None
     """
+
     st.set_page_config(
         page_title="NexaNews",
         page_icon="🎞️",
@@ -581,10 +566,7 @@ def webui() -> None:
         st.session_state["asr_process"] = None
     # Start processes
     if (
-        start_button
-        and st.session_state.ffmpeg_process is None
-        and st.session_state.asr_process is None
-    ):
+        start_button and st.session_state.ffmpeg_process is None and st.session_state.asr_process is None ):
         # When you want to start the processes:
         # ffmpeg_process, asr_process, data_queue = start_processes(channel_name)
         # And when you want to stop them:
@@ -751,6 +733,7 @@ def webui() -> None:
     subs_column, video_column = st.columns([4, 3])
 
     with subs_column:
+        
         if "transcribed_subs" in st.session_state:
             df = _subs_df(st.session_state["transcribed_subs"])
         else:
@@ -812,7 +795,7 @@ def webui() -> None:
                 subs[changed_sub_index].text = changed_sub_text
                 st.session_state["transcribed_subs"] = subs
             except Exception as e:
-                logger.info(e)
+                logger.error(e , exc_info=True)
                 notification_placeholder.error("Error parsing subs!", icon="🚨")
 
     with video_column:
@@ -918,17 +901,12 @@ def webui() -> None:
 
 def run():
     if runtime.exists():
-        # logger.info("Runtime exists, starting web UI.")  # Example logging call
         webui()
     else:
-        logger = logging.getLogger(__name__)  # Configure logging regardless of the condition
-        logger.warning(
-            "Runtime does not exist, starting debug mode."
-        )  # Example logging call
         debugpy.listen(("0.0.0.0", 5678))
+        # debugpy.wait_for_client()
         sys.argv = ["streamlit", "run", __file__, "--theme.base", "dark"] + sys.argv
         sys.exit(stcli.main())
-
 
 if __name__ == "__main__":
     run()

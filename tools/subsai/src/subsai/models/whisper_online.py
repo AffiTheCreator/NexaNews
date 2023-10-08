@@ -360,7 +360,7 @@ class OnlineASRProcessor:
 
     def chunk_completed_sentence(self):
         if self.commited == []: return
-        print(self.commited,file=sys.stderr)
+        # print(self.commited,file=sys.stderr)
         sents = self.words_to_sentences(self.commited)
         for s in sents:
             print("\t\tSENT:",s,file=sys.stderr)

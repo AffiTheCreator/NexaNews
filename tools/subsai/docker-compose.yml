@@ -1,7 +1,9 @@
 version: '3.8'
 
 services:
-  subsai-webui:
+  nexanews:
+    hostname: nexanews
+    container_name: nexanews
     build:
       context: .
       dockerfile: Dockerfile
@@ -12,6 +14,10 @@ services:
       - nexanews-net
     depends_on:
       elasticsearch: { condition: service_healthy }
+    healthcheck:
+      test: curl -s http://nexanews:8501 >/dev/null || exit 1
+      timeout: 2s
+      retries: 50
     deploy:
       resources:
         reservations:
@@ -57,6 +63,7 @@ services:
       - nexanews-net
     depends_on:
       elasticsearch: { condition: service_healthy }
+      nexanews: {condition: service_healthy}
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-s", "-f", "http://localhost:5601/"]

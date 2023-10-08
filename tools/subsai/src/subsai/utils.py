@@ -40,8 +40,11 @@ def create_subtitle_entry(start, end, text , channel_name):
     Returns:
         dict: A subtitle entry with formatted timestamps and text.
     """
-    start_time = str(timedelta(seconds=start))
-    end_time = str(timedelta(seconds=end))
+    # start_time = str(timedelta(seconds=start))
+    # end_time = str(timedelta(seconds=end))
+    
+    start_time = start.strftime('%H:%M:%S')
+    end_time = end.strftime('%H:%M:%S')
     
     return {
         "start_time": start_time,
